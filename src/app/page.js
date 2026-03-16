@@ -234,12 +234,14 @@ function getLocation() {
 export default function Home() {
   const [selectedBudget,   setSelectedBudget]   = useState(null);
   const [selectedDistance, setSelectedDistance] = useState(DISTANCE_OPTIONS[0]);
-  const [shop,     setShop]     = useState(null);
-  const [allShops, setAllShops] = useState([]);
+  const [shop,           setShop]           = useState(null);
+  const [allShops,       setAllShops]       = useState([]); // 営業中の店のみ
+  const [allBudgetShops, setAllBudgetShops] = useState([]); // 全件（営業時間フィルタ前）
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
   const [searched, setSearched] = useState(false);
-  const [userPos,  setUserPos]  = useState(null); // { lat, lng }
+  const [userPos,  setUserPos]  = useState(null);
+  const [showAll,  setShowAll]  = useState(false);
 
   const search = useCallback(async (budget, distance) => {
     if (!budget) { setError('価格帯を選択してください'); return; }
@@ -248,6 +250,7 @@ export default function Home() {
     setError(null);
     setShop(null);
     setSearched(false);
+    setShowAll(false);
 
     try {
       const position = await getLocation();
@@ -277,7 +280,8 @@ export default function Home() {
 
       console.log(`🍱 取得: ${data.shops.length}件 → 営業中フィルタ後: ${openShops.length}件`);
 
-      setAllShops(openShops);
+      setAllBudgetShops(data.shops); // 全件保持（全部見る用）
+      setAllShops(openShops);        // 営業中のみ（ガチャ用）
       setShop(openShops.length > 0 ? pickRandom(openShops) : null);
       setSearched(true);
     } catch (e) {
@@ -441,12 +445,92 @@ export default function Home() {
           </div>
 
           <button className={styles.retryBtn} onClick={handleRetry}>
-            🔀 もう一度探す
+            🎲 もう1度ガチャ
           </button>
-          {allShops.length > 0 && (
-            <p className={styles.countHint}>
-              周辺に {allShops.length} 件見つかりました
-            </p>
+          {allShops.length > 1 && (
+            <>
+              <button
+                className={styles.showAllBtn}
+                onClick={() => setShowAll(v => !v)}
+              >
+                {showAll ? '▲ 閉じる' : `他に ${allShops.length - 1} 件あります`}
+                <span className={styles.showAllArrow}>{showAll ? '' : '全部見る'}</span>
+              </button>
+              {showAll && (
+                <div className={styles.allShopsList}>
+                  {allShops.filter(s => s.id !== shop.id).map(s => (
+                    <div key={s.id} className={styles.card}>
+                      {s.photo?.pc?.l && (
+                        <div className={styles.cardImageWrap}>
+                          <img src={s.photo.pc.l} alt={s.name} className={styles.cardImage} />
+                        </div>
+                      )}
+                      <div className={styles.cardBody}>
+                        <h3 className={styles.shopName}>{s.name}</h3>
+                        {s.genre?.name && (
+                          <span className={styles.badge}>{s.genre.name}</span>
+                        )}
+                        <div className={styles.infoList}>
+                          {s.address && (
+                            <div className={styles.infoRow}>
+                              <span className={styles.infoIcon}>📍</span>
+                              <span>{s.address}</span>
+                              {userPos && s.lat && s.lng && (
+                                <span className={styles.distanceBadge}>
+                                  {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)))}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {s.open && (
+                            <div className={styles.infoRow}>
+                              <span className={styles.infoIcon}>🕐</span>
+                              <span>{s.open}</span>
+                            </div>
+                          )}
+                          {s.lunch && (
+                            <div className={styles.infoRow}>
+                              <span className={styles.infoIcon}>🍽️</span>
+                              <span>ランチ: {s.lunch}</span>
+                            </div>
+                          )}
+                          {s.budget?.average && (
+                            <div className={styles.infoRow}>
+                              <span className={styles.infoIcon}>💴</span>
+                              <span>目安: {s.budget.average}</span>
+                            </div>
+                          )}
+                          {s.access && (
+                            <div className={styles.infoRow}>
+                              <span className={styles.infoIcon}>🚶</span>
+                              <span>{s.access}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={styles.cardActions}>
+                          <a
+                            href={s.urls?.pc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={styles.linkBtn}
+                          >
+                            ホットペッパーで見る
+                          </a>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}
+                          >
+                            地図で見る
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -400,3 +400,149 @@
     font-size: 44px;
   }
 }
+
+/* 店名+営業状態行 */
+.shopNameRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.openBadge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: 100px;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.closedBadge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: var(--color-border);
+  padding: 2px 8px;
+  border-radius: 100px;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.cardClosed {
+  opacity: 0.65;
+}
+
+/* 全部見るボタン */
+.showAllBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px 18px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  border: 2px solid var(--color-border);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.showAllBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.showAllArrow {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--color-primary);
+  background: rgba(255,100,0,0.1);
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+/* 全店舗一覧 */
+.allShopsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  animation: fadeUp 0.3s ease;
+}
+
+.allShopsItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-bg-card);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.allShopsItem:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.allShopsThumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.allShopsInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.allShopsName {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.allShopsBadge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(255,100,0,0.12);
+  color: var(--color-primary);
+  padding: 1px 8px;
+  border-radius: 100px;
+  margin: 3px 0;
+}
+
+.allShopsBudget {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.allShopsDist {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  background: var(--color-border);
+  border-radius: 100px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
