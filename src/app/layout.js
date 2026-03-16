@@ -1,8 +1,34 @@
 import './globals.css';
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
 export const metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'ランチ＆ディナー難民救済サービス',
-  description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ',
+  description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。価格帯・検索範囲を選んでタップするだけ！',
+  openGraph: {
+    title: 'ランチ＆ディナー難民救済サービス',
+    description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。価格帯・検索範囲を選んでタップするだけ！',
+    url: siteUrl,
+    siteName: 'ランチ＆ディナー難民救済サービス',
+    images: [
+      {
+        url: '/ogp.png',
+        width: 1200,
+        height: 630,
+        alt: 'ランチ＆ディナー難民救済サービス',
+      },
+    ],
+    locale: 'ja_JP',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ランチ＆ディナー難民救済サービス',
+    description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。',
+    images: ['/ogp.png'],
+  },
 };
 
 export default function RootLayout({ children }) {
