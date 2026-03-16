@@ -3,21 +3,36 @@
 import { useState, useCallback } from 'react';
 import styles from './page.module.css';
 
+// ── デバッグ用固定座標（本番時は null に戻す）──────────────
+const DEBUG_LOCATION = { lat: 34.3942032224381, lng: 132.45875854135784 };
+// const DEBUG_LOCATION = null;
+
+// ── デバッグ用固定時刻（本番時は null に戻す）──────────────
+const DEBUG_TIME = { hour: 12, minute: 0 }; // 12:00 に固定
+// const DEBUG_TIME = null;
+
+function getNow() {
+  if (!DEBUG_TIME) return new Date();
+  const d = new Date();
+  d.setHours(DEBUG_TIME.hour, DEBUG_TIME.minute, 0, 0);
+  return d;
+}
+
 // ── 定数 ────────────────────────────────────────────────
 const BUDGET_OPTIONS = [
-  { label: '～500円',    code: 'B009' },
-  { label: '～1,000円',  code: 'B010' },
-  { label: '～1,500円',  code: 'B011' },
-  { label: '～2,000円',  code: 'B001' },
-  { label: '～3,000円',  code: 'B002' },
-  { label: '～4,000円',  code: 'B003' },
-  { label: '～5,000円',  code: 'B008' },
-  { label: '～7,000円',  code: 'B004' },
-  { label: '～10,000円', code: 'B005' },
-  { label: '～15,000円', code: 'B006' },
-  { label: '～20,000円', code: 'B012' },
-  { label: '～30,000円', code: 'B013' },
-  { label: '30,001円～', code: 'B014' },
+  { label: '～500円',    max: 500 },
+  { label: '～1,000円',  max: 1000 },
+  { label: '～1,500円',  max: 1500 },
+  { label: '～2,000円',  max: 2000 },
+  { label: '～3,000円',  max: 3000 },
+  { label: '～4,000円',  max: 4000 },
+  { label: '～5,000円',  max: 5000 },
+  { label: '～7,000円',  max: 7000 },
+  { label: '～10,000円', max: 10000 },
+  { label: '～15,000円', max: 15000 },
+  { label: '～20,000円', max: 20000 },
+  { label: '～30,000円', max: 30000 },
+  { label: '30,001円～', min: 30001, max: Infinity },
 ];
 
 const DISTANCE_OPTIONS = [
@@ -68,7 +83,7 @@ function isCurrentlyOpen(shop) {
   const openStr = shop.open;
   if (!openStr || typeof openStr !== 'string' || openStr.trim() === '') return false;
 
-  const now      = new Date();
+  const now      = getNow();
   const todayIdx = now.getDay();
   const cur      = now.getHours() * 60 + now.getMinutes();
 
@@ -102,12 +117,108 @@ function isCurrentlyOpen(shop) {
   return false;
 }
 
-// ── ユーティリティ ────────────────────────────────────────
+/**
+ * 現在時刻が昼帯（10:00〜15:00）かどうかを判定する。
+ */
+function isLunchHour(now) {
+  const h = now.getHours();
+  return h >= 10 && h < 15;
+}
+
+/**
+ * 予算文字列から金額（円）を抽出する。
+ *
+ * 対応パターン:
+ *  - "昼800円 夜2,000円" / "ランチ1,000円 ディナー2,500円"
+ *  - "～1,000円" / "1,001～1,500円" （範囲は中間値）
+ *  - "1,200円前後" などシンプルな数値
+ *
+ * @param {string} str    予算文字列
+ * @param {boolean} isLunch 昼帯かどうか
+ * @returns {number|null}  金額（不明な場合はnull）
+ */
+function extractBudgetAmount(str, isLunch) {
+  if (!str || typeof str !== 'string') return null;
+
+  // 昼/夜 両方の記載があるか確認
+  const lunchM  = str.match(/(?:昼|ランチ)[^\d０-９]*([\d,０-９]+)/);
+  const dinnerM = str.match(/(?:夜|ディナー)[^\d０-９]*([\d,０-９]+)/);
+
+  if (lunchM || dinnerM) {
+    const toNum = (m) => m ? parseInt(m[1].replace(/,/g, '')) : null;
+    const lunchAmt  = toNum(lunchM);
+    const dinnerAmt = toNum(dinnerM);
+    // 昼帯なら昼、夜帯なら夜を優先。片方しかなければそちらを使用
+    if (isLunch)  return lunchAmt  ?? dinnerAmt;
+    return          dinnerAmt ?? lunchAmt;
+  }
+
+  // 通常パターン: 数値を全部拾って平均（範囲対応）
+  const nums = str.replace(/,/g, '').match(/\d+/g);
+  if (!nums || nums.length === 0) return null;
+  const vals = nums.map(Number);
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/**
+ * 店舗が選択された予算範囲内かを判定する。
+ * budget.average → なければ budget.name にフォールバック。
+ */
+function isInBudgetRange(shop, budget, now) {
+  const isLunch = isLunchHour(now);
+  const timeLabel = isLunch ? '昼' : '夜';
+
+  // budget.average を優先、なければ budget.name で代替
+  let avg = extractBudgetAmount(shop.budget?.average, isLunch);
+  let src = `average "${shop.budget?.average}"`;
+
+  if (avg === null) {
+    avg = extractBudgetAmount(shop.budget?.name, isLunch);
+    src = `name "${shop.budget?.name}"`;
+  }
+
+  const min = budget.min ?? 0;
+  const max = budget.max === Infinity ? '∞' : budget.max;
+
+  if (avg === null) {
+    console.log(`💰 ${shop.name}: 予算情報なし → ✅ 表示（スルー）`);
+    return true;
+  }
+
+  const pass = avg >= (budget.min ?? 0) && avg <= (budget.max ?? Infinity);
+  console.log(
+    `💰 ${shop.name}: ${src} → ${avg}円 [${timeLabel}帯] | 選択: ～${max}円 → ${pass ? '✅ 表示' : '❌ 除外'}`
+  );
+  return pass;
+}
+
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** ハーバーサイン式で2点間の距離（メートル）を返す */
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function formatDistance(m) {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`;
+}
+
 function getLocation() {
+  if (DEBUG_LOCATION) {
+    console.log('⚠️ デバッグモード: 固定座標を使用');
+    return Promise.resolve({
+      coords: { latitude: DEBUG_LOCATION.lat, longitude: DEBUG_LOCATION.lng },
+    });
+  }
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('このブラウザは位置情報に対応していません'));
@@ -128,6 +239,7 @@ export default function Home() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
   const [searched, setSearched] = useState(false);
+  const [userPos,  setUserPos]  = useState(null); // { lat, lng }
 
   const search = useCallback(async (budget, distance) => {
     if (!budget) { setError('価格帯を選択してください'); return; }
@@ -141,19 +253,28 @@ export default function Home() {
       const position = await getLocation();
       const { latitude: lat, longitude: lng } = position.coords;
       console.log(`📍 現在地取得: 緯度=${lat}, 経度=${lng}`);
+      setUserPos({ lat, lng });
 
-      const now = new Date();
+      const now = getNow();
+      const isLunch = isLunchHour(now);
       console.log(
-        `🕐 現在時刻: ${now.toLocaleTimeString('ja-JP')} (${DAYS_JP[now.getDay()]}曜日)`
+        `🕐 現在時刻: ${now.toLocaleTimeString('ja-JP')} (${DAYS_JP[now.getDay()]}曜日) [${isLunch ? '昼帯' : '夜帯'}]${DEBUG_TIME ? ' ⚠️デバッグ時刻' : ''}`
       );
 
-      const res  = await fetch(
-        `/api/search?lat=${lat}&lng=${lng}&budget=${budget.code}&range=${distance.range}`
-      );
+      const params = new URLSearchParams({
+        lat, lng,
+        range: distance.range,
+        budgetMin: budget.min ?? 0,
+        budgetMax: budget.max === Infinity ? '' : (budget.max ?? ''),
+        isLunch: isLunch ? '1' : '0',
+      });
+
+      const res  = await fetch(`/api/search?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'APIエラーが発生しました');
 
-      const openShops = data.shops.filter(isCurrentlyOpen);
+      const openShops = data.shops.filter(s => isCurrentlyOpen(s));
+
       console.log(`🍱 取得: ${data.shops.length}件 → 営業中フィルタ後: ${openShops.length}件`);
 
       setAllShops(openShops);
@@ -209,11 +330,11 @@ export default function Home() {
         <div className={styles.budgetGrid}>
           {BUDGET_OPTIONS.map((b) => (
             <button
-              key={b.code}
-              className={`${styles.budgetBtn} ${selectedBudget?.code === b.code ? styles.budgetBtnActive : ''}`}
+              key={b.label}
+              className={`${styles.budgetBtn} ${selectedBudget?.label === b.label ? styles.budgetBtnActive : ''}`}
               onClick={() => handleBudgetSelect(b)}
               disabled={loading}
-              aria-pressed={selectedBudget?.code === b.code}
+              aria-pressed={selectedBudget?.label === b.label}
             >
               {b.label}
             </button>
@@ -266,6 +387,11 @@ export default function Home() {
                   <div className={styles.infoRow}>
                     <span className={styles.infoIcon}>📍</span>
                     <span>{shop.address}</span>
+                    {userPos && shop.lat && shop.lng && (
+                      <span className={styles.distanceBadge}>
+                        {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(shop.lat), parseFloat(shop.lng)))}
+                      </span>
+                    )}
                   </div>
                 )}
                 {shop.open && (

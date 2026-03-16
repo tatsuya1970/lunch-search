@@ -301,6 +301,18 @@
   margin-top: 1px;
 }
 
+.distanceBadge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  background: var(--color-border);
+  border-radius: 100px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
 /* カードのアクションボタン */
 .cardActions {
   display: flex;
