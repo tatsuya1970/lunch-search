@@ -4,12 +4,12 @@ import { useState, useCallback } from 'react';
 import styles from './page.module.css';
 
 // ── デバッグ用固定座標（本番時は null に戻す）──────────────
-const DEBUG_LOCATION = { lat: 34.3942032224381, lng: 132.45875854135784 };
-// const DEBUG_LOCATION = null;
+// const DEBUG_LOCATION = { lat: 34.3942032224381, lng: 132.45875854135784 };
+const DEBUG_LOCATION = null;
 
 // ── デバッグ用固定時刻（本番時は null に戻す）──────────────
-const DEBUG_TIME = { hour: 12, minute: 0 }; // 12:00 に固定
-// const DEBUG_TIME = null;
+// const DEBUG_TIME = { hour: 12, minute: 0 }; // 12:00 に固定
+const DEBUG_TIME = null;
 
 function getNow() {
   if (!DEBUG_TIME) return new Date();
