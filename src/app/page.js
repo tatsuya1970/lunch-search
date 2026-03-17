@@ -20,24 +20,34 @@ function getNow() {
 
 // ── 定数 ────────────────────────────────────────────────
 const BUDGET_OPTIONS = [
-  { label: '～500円',    max: 500 },
-  { label: '～1,000円',  max: 1000 },
-  { label: '～1,500円',  max: 1500 },
-  { label: '～2,000円',  max: 2000 },
-  { label: '～3,000円',  max: 3000 },
-  { label: '～4,000円',  max: 4000 },
-  { label: '～5,000円',  max: 5000 },
-  { label: '～7,000円',  max: 7000 },
-  { label: '～10,000円', max: 10000 },
-  { label: '～15,000円', max: 15000 },
-  { label: '～20,000円', max: 20000 },
-  { label: '～30,000円', max: 30000 },
+  { label: '～500円',    min: 0,     max: 500 },
+  { label: '～1,000円',  min: 501,   max: 1000 },
+  { label: '～1,500円',  min: 1001,  max: 1500 },
+  { label: '～2,000円',  min: 1501,  max: 2000 },
+  { label: '～3,000円',  min: 2001,  max: 3000 },
+  { label: '～4,000円',  min: 3001,  max: 4000 },
+  { label: '～5,000円',  min: 4001,  max: 5000 },
+  { label: '～7,000円',  min: 5001,  max: 7000 },
+  { label: '～10,000円', min: 7001,  max: 10000 },
+  { label: '～15,000円', min: 10001, max: 15000 },
+  { label: '～20,000円', min: 15001, max: 20000 },
+  { label: '～30,000円', min: 20001, max: 30000 },
   { label: '30,001円～', min: 30001, max: Infinity },
 ];
 
 const DISTANCE_OPTIONS = [
   { label: '500m以内', range: '2' },
   { label: '1km以内',  range: '3' },
+];
+
+const RESULT_OPTIONS = [
+  { label: '1件ランダム', value: 'one' },
+  { label: '全部表示',   value: 'all' },
+];
+
+const TIME_OPTIONS = [
+  { label: '営業中のみ',      value: 'open' },
+  { label: '営業時間外含む', value: 'all'  },
 ];
 
 // ── 営業時間パーサー ──────────────────────────────────────
@@ -232,19 +242,21 @@ function getLocation() {
 
 // ── コンポーネント ─────────────────────────────────────────
 export default function Home() {
-  const [selectedBudget,   setSelectedBudget]   = useState(null);
+  const [selectedBudgets,  setSelectedBudgets]  = useState([]);
   const [selectedDistance, setSelectedDistance] = useState(DISTANCE_OPTIONS[0]);
+  const [resultMode,       setResultMode]       = useState('one');  // 'one' | 'all'
+  const [timeMode,         setTimeMode]         = useState('open'); // 'open' | 'all'
   const [shop,           setShop]           = useState(null);
-  const [allShops,       setAllShops]       = useState([]); // 営業中の店のみ
-  const [allBudgetShops, setAllBudgetShops] = useState([]); // 全件（営業時間フィルタ前）
+  const [allShops,       setAllShops]       = useState([]);
+  const [allBudgetShops, setAllBudgetShops] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
   const [searched, setSearched] = useState(false);
   const [userPos,  setUserPos]  = useState(null);
   const [showAll,  setShowAll]  = useState(false);
 
-  const search = useCallback(async (budget, distance) => {
-    if (!budget) { setError('価格帯を選択してください'); return; }
+  const search = useCallback(async (budgets, distance, rMode, tMode) => {
+    if (!budgets.length) { setError('価格帯を選択してください'); return; }
 
     setLoading(true);
     setError(null);
@@ -264,11 +276,14 @@ export default function Home() {
         `🕐 現在時刻: ${now.toLocaleTimeString('ja-JP')} (${DAYS_JP[now.getDay()]}曜日) [${isLunch ? '昼帯' : '夜帯'}]${DEBUG_TIME ? ' ⚠️デバッグ時刻' : ''}`
       );
 
+      // 選択された予算の結合範囲を計算
+      const budgetMin = Math.min(...budgets.map(b => b.min ?? 0));
+      const budgetMaxVal = Math.max(...budgets.map(b => b.max ?? Infinity));
       const params = new URLSearchParams({
         lat, lng,
         range: distance.range,
-        budgetMin: budget.min ?? 0,
-        budgetMax: budget.max === Infinity ? '' : (budget.max ?? ''),
+        budgetMin,
+        budgetMax: budgetMaxVal === Infinity ? '' : budgetMaxVal,
         isLunch: isLunch ? '1' : '0',
       });
 
@@ -276,13 +291,21 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'APIエラーが発生しました');
 
-      const openShops = data.shops.filter(s => isCurrentlyOpen(s));
+      // 営業時間フィルタの適用
+      const candidates = tMode === 'open'
+        ? data.shops.filter(s => isCurrentlyOpen(s))
+        : data.shops;
 
-      console.log(`🍱 取得: ${data.shops.length}件 → 営業中フィルタ後: ${openShops.length}件`);
+      console.log(`🍱 取得: ${data.shops.length}件 → 候補: ${candidates.length}件 [${tMode === 'open' ? '営業中のみ' : '営業時間外含む'}]`);
 
-      setAllBudgetShops(data.shops); // 全件保持（全部見る用）
-      setAllShops(openShops);        // 営業中のみ（ガチャ用）
-      setShop(openShops.length > 0 ? pickRandom(openShops) : null);
+      setAllBudgetShops(data.shops);
+      setAllShops(candidates);
+
+      if (rMode === 'all') {
+        setShop(null); // 全部モードは単一カードなし
+      } else {
+        setShop(candidates.length > 0 ? pickRandom(candidates) : null);
+      }
       setSearched(true);
     } catch (e) {
       setError(e.message);
@@ -291,23 +314,28 @@ export default function Home() {
     }
   }, []);
 
+  const handleSearch = () => search(selectedBudgets, selectedDistance, resultMode, timeMode);
+
   const handleBudgetSelect = (budget) => {
-    setSelectedBudget(budget);
-    search(budget, selectedDistance);
+    setSelectedBudgets(prev =>
+      prev.some(b => b.label === budget.label)
+        ? prev.filter(b => b.label !== budget.label) // 選択解除
+        : [...prev, budget]                           // 追加
+    );
   };
 
   const handleRetry = () => {
     if (allShops.length > 0) setShop(pickRandom(allShops));
-    else search(selectedBudget, selectedDistance);
+    else search(selectedBudgets, selectedDistance, resultMode, timeMode);
   };
 
   return (
     <div className={styles.container}>
       {/* ヘッダー */}
       <header className={styles.header}>
-        <div className={styles.headerIcon}>🍱</div>
-        <h1 className={styles.title}>ランチ＆ディナー<br />難民救済サービス</h1>
-        <p className={styles.subtitle}>現在地周辺の営業中店舗をランダム提案</p>
+        <div className={styles.headerIcon}>🍽️</div>
+        <h1 className={styles.title}>ランチ難民・ディナー難民<br />救済サービス</h1>
+        <p className={styles.subtitle}>現在地周辺の飲食店をパッと表示</p>
       </header>
 
       {/* 距離選択 */}
@@ -332,21 +360,79 @@ export default function Home() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>予算を選んでタップ！</h2>
         <div className={styles.budgetGrid}>
-          {BUDGET_OPTIONS.map((b) => (
-            <button
-              key={b.label}
-              className={`${styles.budgetBtn} ${selectedBudget?.label === b.label ? styles.budgetBtnActive : ''}`}
-              onClick={() => handleBudgetSelect(b)}
-              disabled={loading}
-              aria-pressed={selectedBudget?.label === b.label}
-            >
-              {b.label}
-            </button>
-          ))}
+          {(() => {
+            // 選択された予算の全体的な範囲を計算
+            const overallMin = selectedBudgets.length > 0 ? Math.min(...selectedBudgets.map(b => b.min ?? 0))     : null;
+            const overallMax = selectedBudgets.length > 0 ? Math.max(...selectedBudgets.map(b => b.max ?? Infinity)) : null;
+            return BUDGET_OPTIONS.map((b) => {
+              const isSelected = selectedBudgets.some(s => s.label === b.label);
+              const isIncluded = !isSelected && overallMin !== null
+                && (b.min ?? 0) >= overallMin
+                && (b.max ?? Infinity) <= overallMax;
+              return (
+                <button
+                  key={b.label}
+                  className={`${styles.budgetBtn} ${isSelected ? styles.budgetBtnActive : isIncluded ? styles.budgetBtnIncluded : ''}`}
+                  onClick={() => handleBudgetSelect(b)}
+                  disabled={loading}
+                  aria-pressed={isSelected}
+                >
+                  {b.label}
+                </button>
+              );
+            });
+          })()}
         </div>
       </section>
 
-      {/* ローディング */}
+      {/* 検索オプション */}
+      <section className={styles.section}>
+        <div className={styles.optionRow}>
+          <div className={styles.optionGroup}>
+            <span className={styles.optionLabel}>結果</span>
+            <div className={styles.optionBtns}>
+              {RESULT_OPTIONS.map(o => (
+                <button
+                  key={o.value}
+                  className={`${styles.optionBtn} ${resultMode === o.value ? styles.optionBtnActive : ''}`}
+                  onClick={() => setResultMode(o.value)}
+                  disabled={loading}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={styles.optionGroup}>
+            <span className={styles.optionLabel}>時間</span>
+            <div className={styles.optionBtns}>
+              {TIME_OPTIONS.map(o => (
+                <button
+                  key={o.value}
+                  className={`${styles.optionBtn} ${timeMode === o.value ? styles.optionBtnActive : ''}`}
+                  onClick={() => setTimeMode(o.value)}
+                  disabled={loading}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 検索ボタン */}
+      <button
+        className={styles.searchBtn}
+        onClick={handleSearch}
+        disabled={loading || selectedBudgets.length === 0}
+      >
+        {loading ? '検索中…' : '🔍 検索する'}
+      </button>
+      {selectedBudgets.length === 0 && !loading && (
+        <p className={styles.searchHint}>上の予算を選択してください（複数可）</p>
+      )}
+
       {loading && (
         <div className={styles.loadingWrap}>
           <div className={styles.spinner} />
@@ -363,15 +449,57 @@ export default function Home() {
       )}
 
       {/* 結果なし */}
-      {searched && !shop && !loading && !error && (
+      {searched && !shop && allShops.length === 0 && !loading && !error && (
         <div className={styles.emptyBox}>
           <div className={styles.emptyIcon}>😔</div>
           <p>条件に合うお店が見つかりませんでした</p>
-          <p className={styles.emptyHint}>時間帯・予算・検索範囲を変えてお試しください</p>
+          <p className={styles.emptyHint}>検索範囲・予算を変えてお試しください</p>
+        </div>
+      )}
+      {/* 店舗カード（全部モード） */}
+      {searched && resultMode === 'all' && allShops.length > 0 && !loading && (
+        <div className={styles.resultSection}>
+          <p className={styles.resultLabel}>📍 {allShops.length}件見つかりました</p>
+          <div className={styles.allShopsList}>
+            {allShops.map(s => (
+              <div key={s.id} className={styles.card}>
+                {s.photo?.pc?.l && (
+                  <div className={styles.cardImageWrap}>
+                    <img src={s.photo.pc.l} alt={s.name} className={styles.cardImage} />
+                  </div>
+                )}
+                <div className={styles.cardBody}>
+                  <h3 className={styles.shopName}>{s.name}</h3>
+                  {s.genre?.name && <span className={styles.badge}>{s.genre.name}</span>}
+                  <div className={styles.infoList}>
+                    {s.address && (
+                      <div className={styles.infoRow}>
+                        <span className={styles.infoIcon}>📍</span>
+                        <span>{s.address}</span>
+                        {userPos && s.lat && s.lng && (
+                          <span className={styles.distanceBadge}>
+                            {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)))}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {s.open && <div className={styles.infoRow}><span className={styles.infoIcon}>🕐</span><span>{s.open}</span></div>}
+                    {s.lunch && <div className={styles.infoRow}><span className={styles.infoIcon}>🍽️</span><span>ランチ: {s.lunch}</span></div>}
+                    {s.budget?.average && <div className={styles.infoRow}><span className={styles.infoIcon}>💴</span><span>目安: {s.budget.average}</span></div>}
+                    {s.access && <div className={styles.infoRow}><span className={styles.infoIcon}>🚶</span><span>{s.access}</span></div>}
+                  </div>
+                  <div className={styles.cardActions}>
+                    <a href={s.urls?.pc} target="_blank" rel="noopener noreferrer" className={styles.linkBtn}>ホットペッパーで見る</a>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}`} target="_blank" rel="noopener noreferrer" className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}>地図で見る</a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* 店舗カード */}
+      {/* 店舗カード（1件モード） */}
       {shop && !loading && (
         <div className={styles.resultSection}>
           <p className={styles.resultLabel}>🎲 今日のお店はこちら！</p>

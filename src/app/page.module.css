@@ -133,6 +133,14 @@
   transform: translateY(-2px);
 }
 
+.budgetBtnIncluded {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-2px);
+}
+
 .budgetBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -399,6 +407,104 @@
   .headerIcon {
     font-size: 44px;
   }
+}
+
+/* 検索オプション */
+.optionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.optionGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.optionLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  min-width: 2.5em;
+  flex-shrink: 0;
+}
+
+.optionBtns {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.optionBtn {
+  flex: 1;
+  padding: 10px 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  border: 2px solid var(--color-border);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.optionBtn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.optionBtnActive {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.optionBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 検索ボタン */
+.searchBtn {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 18px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-md);
+  transition: all 0.2s ease;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.searchBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  opacity: 0.93;
+}
+
+.searchBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.searchBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.searchHint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+  margin-bottom: 12px;
 }
 
 /* 店名+営業状態行 */
