@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 // ══════════════════════════════════════════════════════════════
 //  切り替えフラグ: 'google' | 'hotpepper'
 // ══════════════════════════════════════════════════════════════
-const API_PROVIDER = 'google';
+const API_PROVIDER = 'hotpepper';
 
 // ── ハーバーサイン距離（メートル）──────────────────────────
 function haversineMeters(lat1, lng1, lat2, lng2) {
