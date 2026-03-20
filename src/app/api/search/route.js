@@ -22,7 +22,8 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const lat   = searchParams.get('lat');
   const lng   = searchParams.get('lng');
-  const range = searchParams.get('range') ?? '2'; // '2'=500m, '3'=1km
+  const range = searchParams.get('range') ?? '2';
+
 
   if (!lat || !lng) {
     return NextResponse.json({ error: '位置情報が取得できませんでした' }, { status: 400 });
@@ -54,11 +55,9 @@ const FIELD_MASK = [
   'places.userRatingCount',
 ].join(',');
 
-// 検索対象のPlace Type一覧（各タイプで最大20件取得）
+// 検索対象のPlace Type（restaurantのみ）
 const PLACE_TYPES = [
   'restaurant',
-  'cafe',
-  'bar',
 ];
 
 async function fetchNearby(apiKey, lat, lng, radius, type) {
@@ -103,12 +102,11 @@ async function searchGoogle(lat, lng, range) {
   const radius = radiusMap[range] ?? 300;
 
   try {
-    // 全タイプを並列リクエスト
     const results = await Promise.all(
-      PLACE_TYPES.map(type => fetchNearby(apiKey, lat, lng, radius, type))
+      PLACE_TYPES.map(t => fetchNearby(apiKey, lat, lng, radius, t))
     );
     const allPlaces = results.flat();
-    console.log(`📦 タイプ別取得: ${PLACE_TYPES.map((t, i) => `${t}=${results[i].length}`).join(', ')} → 計${allPlaces.length}件`);
+    console.log(`📦 取得: ${results[0].length}件`);
 
     // 重複除去（id基準）
     const seen = new Set();

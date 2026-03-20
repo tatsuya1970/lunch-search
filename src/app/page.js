@@ -27,9 +27,7 @@ function getNow() {
 // ── 定数 ────────────────────────────────────────────────
 const DISTANCE_OPTIONS = [
   { label: '100m以内', range: '100' },
-  { label: '200m以内', range: '200' },
-  { label: '500m以内', range: '500' },
-  { label: '1km以内',  range: '1000' },
+  { label: '300m以内', range: '300' },
 ];
 
 const TIME_OPTIONS = [
