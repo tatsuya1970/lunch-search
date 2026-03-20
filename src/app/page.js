@@ -32,11 +32,6 @@ const DISTANCE_OPTIONS = [
   { label: '1km以内',  range: '1000' },
 ];
 
-const RESULT_OPTIONS = [
-  { label: '1件ランダム', value: 'one' },
-  { label: '全部表示',   value: 'all' },
-];
-
 const TIME_OPTIONS = [
   { label: '営業中のみ',      value: 'open' },
   { label: '営業時間外含む', value: 'all'  },
@@ -172,7 +167,6 @@ function getLocation() {
 // ── コンポーネント ─────────────────────────────────────────
 export default function Home() {
   const [selectedDistance, setSelectedDistance] = useState(DISTANCE_OPTIONS[0]);
-  const [resultMode,       setResultMode]       = useState('one');  // 'one' | 'all'
   const [timeMode,         setTimeMode]         = useState('open'); // 'open' | 'all'
   const [shop,             setShop]             = useState(null);
   const [allShops,         setAllShops]         = useState([]);
@@ -180,14 +174,12 @@ export default function Home() {
   const [error,            setError]            = useState(null);
   const [searched,         setSearched]         = useState(false);
   const [userPos,          setUserPos]          = useState(null);
-  const [showAll,          setShowAll]          = useState(false);
 
-  const search = useCallback(async (distance, rMode, tMode) => {
+  const search = useCallback(async (distance, tMode) => {
     setLoading(true);
     setError(null);
-    setShop(null);
+    setShop(null)
     setSearched(false);
-    setShowAll(false);
 
     try {
       const position = await getLocation();
@@ -211,12 +203,7 @@ export default function Home() {
       console.log(`🍽️ 取得: ${data.shops.length}件 → 候補: ${candidates.length}件 [${tMode === 'open' ? '営業中のみ' : '営業時間外含む'}]`);
 
       setAllShops(candidates);
-
-      if (rMode === 'all') {
-        setShop(null);
-      } else {
-        setShop(candidates.length > 0 ? pickRandom(candidates) : null);
-      }
+      setShop(candidates.length > 0 ? pickRandom(candidates) : null);
       setSearched(true);
     } catch (e) {
       setError(e.message);
@@ -225,11 +212,11 @@ export default function Home() {
     }
   }, []);
 
-  const handleSearch = () => search(selectedDistance, resultMode, timeMode);
+  const handleSearch = () => search(selectedDistance, timeMode);
 
   const handleRetry = () => {
     if (allShops.length > 0) setShop(pickRandom(allShops));
-    else search(selectedDistance, resultMode, timeMode);
+    else search(selectedDistance, timeMode);
   };
 
   // 店舗カード共通レンダラー
@@ -318,21 +305,6 @@ export default function Home() {
       <section className={styles.section}>
         <div className={styles.optionRow}>
           <div className={styles.optionGroup}>
-            <span className={styles.optionLabel}>結果</span>
-            <div className={styles.optionBtns}>
-              {RESULT_OPTIONS.map(o => (
-                <button
-                  key={o.value}
-                  className={`${styles.optionBtn} ${resultMode === o.value ? styles.optionBtnActive : ''}`}
-                  onClick={() => setResultMode(o.value)}
-                  disabled={loading}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className={styles.optionGroup}>
             <span className={styles.optionLabel}>時間</span>
             <div className={styles.optionBtns}>
               {TIME_OPTIONS.map(o => (
@@ -383,19 +355,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 店舗カード（全部モード） */}
-      {searched && resultMode === 'all' && allShops.length > 0 && !loading && (
-        <div className={styles.resultSection}>
-          <p className={styles.resultLabel}>
-            📍 {allShops.length}件見つかりました
-            {allShops.length >= 60 && <span className={styles.searchHint} style={{display:'block',marginTop:'2px'}}>（検索は60件限度）</span>}
-          </p>
-          <div className={styles.allShopsList}>
-            {allShops.map(s => renderShopCard(s, s.id))}
-          </div>
-        </div>
-      )}
-
       {/* 店舗カード（1件モード） */}
       {shop && !loading && (
         <div className={styles.resultSection}>
@@ -406,22 +365,6 @@ export default function Home() {
           <button className={styles.retryBtn} onClick={handleRetry}>
             🎲 もう1度ガチャ
           </button>
-          {allShops.length > 1 && (
-            <>
-              <button
-                className={styles.showAllBtn}
-                onClick={() => setShowAll(v => !v)}
-              >
-                {showAll ? '▲ 閉じる' : `他に ${allShops.length - 1} 件あります`}
-                <span className={styles.showAllArrow}>{showAll ? '' : '全部見る'}</span>
-              </button>
-              {showAll && (
-                <div className={styles.allShopsList}>
-                  {allShops.filter(s => s.id !== shop.id).map(s => renderShopCard(s, s.id))}
-                </div>
-              )}
-            </>
-          )}
         </div>
       )}
     </div>
