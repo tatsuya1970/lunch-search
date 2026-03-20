@@ -5,11 +5,17 @@ import styles from './page.module.css';
 
 // ── デバッグ用固定座標（本番時は null に戻す）──────────────
 // const DEBUG_LOCATION = { lat: 34.3942032224381, lng: 132.45875854135784 };
+// const DEBUG_LOCATION = { lat: 35.6812, lng: 139.7671 }; // 東京駅
 const DEBUG_LOCATION = null;
 
 // ── デバッグ用固定時刻（本番時は null に戻す）──────────────
 // const DEBUG_TIME = { hour: 12, minute: 0 }; // 12:00 に固定
 const DEBUG_TIME = null;
+
+// ── 営業中判定モード ────────────────────────────────────────
+// true  → Google Places の openNow を使用（推奨・シンプル）
+// false → 自前で営業時間テキストをパース（Hotpepper互換・旧方式）
+const USE_OPEN_NOW = true;
 
 function getNow() {
   if (!DEBUG_TIME) return new Date();
@@ -19,25 +25,11 @@ function getNow() {
 }
 
 // ── 定数 ────────────────────────────────────────────────
-const BUDGET_OPTIONS = [
-  { label: '～500円',    min: 0,     max: 500 },
-  { label: '～1,000円',  min: 501,   max: 1000 },
-  { label: '～1,500円',  min: 1001,  max: 1500 },
-  { label: '～2,000円',  min: 1501,  max: 2000 },
-  { label: '～3,000円',  min: 2001,  max: 3000 },
-  { label: '～4,000円',  min: 3001,  max: 4000 },
-  { label: '～5,000円',  min: 4001,  max: 5000 },
-  { label: '～7,000円',  min: 5001,  max: 7000 },
-  { label: '～10,000円', min: 7001,  max: 10000 },
-  { label: '～15,000円', min: 10001, max: 15000 },
-  { label: '～20,000円', min: 15001, max: 20000 },
-  { label: '～30,000円', min: 20001, max: 30000 },
-  { label: '30,001円～', min: 30001, max: Infinity },
-];
-
 const DISTANCE_OPTIONS = [
-  { label: '500m以内', range: '2' },
-  { label: '1km以内',  range: '3' },
+  { label: '100m以内', range: '100' },
+  { label: '200m以内', range: '200' },
+  { label: '500m以内', range: '500' },
+  { label: '1km以内',  range: '1000' },
 ];
 
 const RESULT_OPTIONS = [
@@ -84,12 +76,19 @@ function checkTimeRanges(text, cur) {
 
 /**
  * 現在この瞬間に営業中かどうかを判定する。
- * - 判定不能（openフィールドが空 / パース不可）→ false（閉店扱いで除外）
- * - 曜日パターンあり + 今日にマッチ + 現在時刻が範囲内 → true
- * - 曜日パターンなし + 時間帯あり + 現在時刻が範囲内 → true
- * - それ以外 → false（閉店扱いで除外）
+ *
+ * USE_OPEN_NOW = true  → shop.openNow（Google APIの値）を使用
+ * USE_OPEN_NOW = false → 営業時間テキストを自前でパース（旧方式）
+ *
+ * openNow が null（情報なし）の場合は自前パーサーにフォールバック。
  */
 function isCurrentlyOpen(shop) {
+  // ── openNow モード ──────────────────────────────────────
+  if (USE_OPEN_NOW && shop.openNow !== null && shop.openNow !== undefined) {
+    return shop.openNow; // true=営業中 / false=閉店
+  }
+
+  // ── 自前パーサー（旧方式 / フォールバック）──────────────
   const openStr = shop.open;
   if (!openStr || typeof openStr !== 'string' || openStr.trim() === '') return false;
 
@@ -97,109 +96,39 @@ function isCurrentlyOpen(shop) {
   const todayIdx = now.getDay();
   const cur      = now.getHours() * 60 + now.getMinutes();
 
+  // Google Places形式: "月曜日: 11:00〜22:00\n火曜日: ..." など
+  const lines = openStr.split('\n').map(l => l.trim()).filter(Boolean);
+
+  const dayNamesJP = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+  const todayName  = dayNamesJP[todayIdx];
+
+  for (const line of lines) {
+    if (line.startsWith(todayName)) {
+      const timePart = line.slice(todayName.length).replace(/^[：:]\s*/, '');
+      if (checkTimeRanges(timePart, cur)) return true;
+    }
+  }
+
+  // Hotpepper形式フォールバック
   const chunks       = openStr.split(/[、,\n]+/);
   let hasDayPattern  = false;
-  let currentDayActive = null; // 今日にマッチした曜日セグメント中かどうか
-
+  let currentDayActive = null;
   for (const chunk of chunks) {
     const colonIdx = chunk.search(/[：:]/);
     if (colonIdx !== -1) {
       const dayPart  = chunk.slice(0, colonIdx).trim();
       const timePart = chunk.slice(colonIdx + 1).trim();
-
-      if (/[月火水木金土日]/.test(dayPart)) {
+      if (/[月火水木金土日]/.test(dayPart) && !dayPart.includes('曜日')) {
         hasDayPattern    = true;
         currentDayActive = dayIncludes(dayPart, todayIdx) ? timePart : null;
       }
       if (currentDayActive !== null && checkTimeRanges(timePart, cur)) return true;
     } else if (currentDayActive !== null) {
-      // コロンのない継続チャンク（同じ曜日セグメントの追加時間帯）
       if (checkTimeRanges(chunk, cur)) return true;
     }
   }
-
-  // 曜日パターンがない場合：全体から時間帯のみで判断
-  if (!hasDayPattern) {
-    return checkTimeRanges(openStr, cur);
-  }
-
-  // 曜日パターンあり → 今日の時間帯にマッチしなかった = 閉店
+  if (!hasDayPattern) return checkTimeRanges(openStr, cur);
   return false;
-}
-
-/**
- * 現在時刻が昼帯（10:00〜15:00）かどうかを判定する。
- */
-function isLunchHour(now) {
-  const h = now.getHours();
-  return h >= 10 && h < 15;
-}
-
-/**
- * 予算文字列から金額（円）を抽出する。
- *
- * 対応パターン:
- *  - "昼800円 夜2,000円" / "ランチ1,000円 ディナー2,500円"
- *  - "～1,000円" / "1,001～1,500円" （範囲は中間値）
- *  - "1,200円前後" などシンプルな数値
- *
- * @param {string} str    予算文字列
- * @param {boolean} isLunch 昼帯かどうか
- * @returns {number|null}  金額（不明な場合はnull）
- */
-function extractBudgetAmount(str, isLunch) {
-  if (!str || typeof str !== 'string') return null;
-
-  // 昼/夜 両方の記載があるか確認
-  const lunchM  = str.match(/(?:昼|ランチ)[^\d０-９]*([\d,０-９]+)/);
-  const dinnerM = str.match(/(?:夜|ディナー)[^\d０-９]*([\d,０-９]+)/);
-
-  if (lunchM || dinnerM) {
-    const toNum = (m) => m ? parseInt(m[1].replace(/,/g, '')) : null;
-    const lunchAmt  = toNum(lunchM);
-    const dinnerAmt = toNum(dinnerM);
-    // 昼帯なら昼、夜帯なら夜を優先。片方しかなければそちらを使用
-    if (isLunch)  return lunchAmt  ?? dinnerAmt;
-    return          dinnerAmt ?? lunchAmt;
-  }
-
-  // 通常パターン: 数値を全部拾って平均（範囲対応）
-  const nums = str.replace(/,/g, '').match(/\d+/g);
-  if (!nums || nums.length === 0) return null;
-  const vals = nums.map(Number);
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
-}
-
-/**
- * 店舗が選択された予算範囲内かを判定する。
- * budget.average → なければ budget.name にフォールバック。
- */
-function isInBudgetRange(shop, budget, now) {
-  const isLunch = isLunchHour(now);
-  const timeLabel = isLunch ? '昼' : '夜';
-
-  // budget.average を優先、なければ budget.name で代替
-  let avg = extractBudgetAmount(shop.budget?.average, isLunch);
-  let src = `average "${shop.budget?.average}"`;
-
-  if (avg === null) {
-    avg = extractBudgetAmount(shop.budget?.name, isLunch);
-    src = `name "${shop.budget?.name}"`;
-  }
-
-  const min = budget.min ?? 0;
-  const max = budget.max === Infinity ? '∞' : budget.max;
-
-  if (avg === null) {
-    console.log(`💰 ${shop.name}: 予算情報なし → ✅ 表示（スルー）`);
-    return true;
-  }
-
-  const pass = avg >= (budget.min ?? 0) && avg <= (budget.max ?? Infinity);
-  console.log(
-    `💰 ${shop.name}: ${src} → ${avg}円 [${timeLabel}帯] | 選択: ～${max}円 → ${pass ? '✅ 表示' : '❌ 除外'}`
-  );
-  return pass;
 }
 
 function pickRandom(arr) {
@@ -242,22 +171,18 @@ function getLocation() {
 
 // ── コンポーネント ─────────────────────────────────────────
 export default function Home() {
-  const [selectedBudgets,  setSelectedBudgets]  = useState([]);
   const [selectedDistance, setSelectedDistance] = useState(DISTANCE_OPTIONS[0]);
   const [resultMode,       setResultMode]       = useState('one');  // 'one' | 'all'
   const [timeMode,         setTimeMode]         = useState('open'); // 'open' | 'all'
-  const [shop,           setShop]           = useState(null);
-  const [allShops,       setAllShops]       = useState([]);
-  const [allBudgetShops, setAllBudgetShops] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState(null);
-  const [searched, setSearched] = useState(false);
-  const [userPos,  setUserPos]  = useState(null);
-  const [showAll,  setShowAll]  = useState(false);
+  const [shop,             setShop]             = useState(null);
+  const [allShops,         setAllShops]         = useState([]);
+  const [loading,          setLoading]          = useState(false);
+  const [error,            setError]            = useState(null);
+  const [searched,         setSearched]         = useState(false);
+  const [userPos,          setUserPos]          = useState(null);
+  const [showAll,          setShowAll]          = useState(false);
 
-  const search = useCallback(async (budgets, distance, rMode, tMode) => {
-    if (!budgets.length) { setError('価格帯を選択してください'); return; }
-
+  const search = useCallback(async (distance, rMode, tMode) => {
     setLoading(true);
     setError(null);
     setShop(null);
@@ -271,22 +196,9 @@ export default function Home() {
       setUserPos({ lat, lng });
 
       const now = getNow();
-      const isLunch = isLunchHour(now);
-      console.log(
-        `🕐 現在時刻: ${now.toLocaleTimeString('ja-JP')} (${DAYS_JP[now.getDay()]}曜日) [${isLunch ? '昼帯' : '夜帯'}]${DEBUG_TIME ? ' ⚠️デバッグ時刻' : ''}`
-      );
+      console.log(`🕐 現在時刻: ${now.toLocaleTimeString('ja-JP')} (${DAYS_JP[now.getDay()]}曜日)`);
 
-      // 選択された予算の結合範囲を計算
-      const budgetMin = Math.min(...budgets.map(b => b.min ?? 0));
-      const budgetMaxVal = Math.max(...budgets.map(b => b.max ?? Infinity));
-      const params = new URLSearchParams({
-        lat, lng,
-        range: distance.range,
-        budgetMin,
-        budgetMax: budgetMaxVal === Infinity ? '' : budgetMaxVal,
-        isLunch: isLunch ? '1' : '0',
-      });
-
+      const params = new URLSearchParams({ lat, lng, range: distance.range });
       const res  = await fetch(`/api/search?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'APIエラーが発生しました');
@@ -296,13 +208,12 @@ export default function Home() {
         ? data.shops.filter(s => isCurrentlyOpen(s))
         : data.shops;
 
-      console.log(`🍱 取得: ${data.shops.length}件 → 候補: ${candidates.length}件 [${tMode === 'open' ? '営業中のみ' : '営業時間外含む'}]`);
+      console.log(`🍽️ 取得: ${data.shops.length}件 → 候補: ${candidates.length}件 [${tMode === 'open' ? '営業中のみ' : '営業時間外含む'}]`);
 
-      setAllBudgetShops(data.shops);
       setAllShops(candidates);
 
       if (rMode === 'all') {
-        setShop(null); // 全部モードは単一カードなし
+        setShop(null);
       } else {
         setShop(candidates.length > 0 ? pickRandom(candidates) : null);
       }
@@ -314,20 +225,67 @@ export default function Home() {
     }
   }, []);
 
-  const handleSearch = () => search(selectedBudgets, selectedDistance, resultMode, timeMode);
-
-  const handleBudgetSelect = (budget) => {
-    setSelectedBudgets(prev =>
-      prev.some(b => b.label === budget.label)
-        ? prev.filter(b => b.label !== budget.label) // 選択解除
-        : [...prev, budget]                           // 追加
-    );
-  };
+  const handleSearch = () => search(selectedDistance, resultMode, timeMode);
 
   const handleRetry = () => {
     if (allShops.length > 0) setShop(pickRandom(allShops));
-    else search(selectedBudgets, selectedDistance, resultMode, timeMode);
+    else search(selectedDistance, resultMode, timeMode);
   };
+
+  // 店舗カード共通レンダラー
+  const renderShopCard = (s, key) => (
+    <div key={key} className={styles.card}>
+      {s.photo?.pc?.l && (
+        <div className={styles.cardImageWrap}>
+          <img src={s.photo.pc.l} alt={s.name} className={styles.cardImage} />
+        </div>
+      )}
+      <div className={styles.cardBody}>
+        <h3 className={styles.shopName}>{s.name}</h3>
+        {s.genre?.name && <span className={styles.badge}>{s.genre.name}</span>}
+        {s.rating && (
+          <span className={styles.badge} style={{ marginLeft: '4px', background: 'linear-gradient(135deg,#f6b93b,#e55039)' }}>
+            ⭐ {s.rating.toFixed(1)}{s.userRatingCount ? ` (${s.userRatingCount})` : ''}
+          </span>
+        )}
+        <div className={styles.infoList}>
+          {s.address && (
+            <div className={styles.infoRow}>
+              <span className={styles.infoIcon}>📍</span>
+              <span>{s.address}</span>
+              {userPos && s.lat && s.lng && (
+                <span className={styles.distanceBadge}>
+                  {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)))}
+                </span>
+              )}
+            </div>
+          )}
+          {s.open && (
+            <div className={styles.infoRow}>
+              <span className={styles.infoIcon}>🕐</span>
+              <span style={{ whiteSpace: 'pre-line', fontSize: '0.85em' }}>{s.open}</span>
+            </div>
+          )}
+          {s.budget?.average && (
+            <div className={styles.infoRow}>
+              <span className={styles.infoIcon}>💴</span>
+              <span>目安: {s.budget.average}</span>
+            </div>
+          )}
+        </div>
+        <div className={styles.cardActions}>
+          <a
+            href={s.urls?.pc}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.linkBtn}
+          >
+            Googleマップで見る
+          </a>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className={styles.container}>
@@ -353,35 +311,6 @@ export default function Home() {
               {d.label}
             </button>
           ))}
-        </div>
-      </section>
-
-      {/* 予算選択 */}
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>予算を選んでタップ！</h2>
-        <div className={styles.budgetGrid}>
-          {(() => {
-            // 選択された予算の全体的な範囲を計算
-            const overallMin = selectedBudgets.length > 0 ? Math.min(...selectedBudgets.map(b => b.min ?? 0))     : null;
-            const overallMax = selectedBudgets.length > 0 ? Math.max(...selectedBudgets.map(b => b.max ?? Infinity)) : null;
-            return BUDGET_OPTIONS.map((b) => {
-              const isSelected = selectedBudgets.some(s => s.label === b.label);
-              const isIncluded = !isSelected && overallMin !== null
-                && (b.min ?? 0) >= overallMin
-                && (b.max ?? Infinity) <= overallMax;
-              return (
-                <button
-                  key={b.label}
-                  className={`${styles.budgetBtn} ${isSelected ? styles.budgetBtnActive : isIncluded ? styles.budgetBtnIncluded : ''}`}
-                  onClick={() => handleBudgetSelect(b)}
-                  disabled={loading}
-                  aria-pressed={isSelected}
-                >
-                  {b.label}
-                </button>
-              );
-            });
-          })()}
         </div>
       </section>
 
@@ -425,13 +354,10 @@ export default function Home() {
       <button
         className={styles.searchBtn}
         onClick={handleSearch}
-        disabled={loading || selectedBudgets.length === 0}
+        disabled={loading}
       >
         {loading ? '検索中…' : '🔍 検索する'}
       </button>
-      {selectedBudgets.length === 0 && !loading && (
-        <p className={styles.searchHint}>上の予算を選択してください（複数可）</p>
-      )}
 
       {loading && (
         <div className={styles.loadingWrap}>
@@ -449,52 +375,23 @@ export default function Home() {
       )}
 
       {/* 結果なし */}
-      {searched && !shop && allShops.length === 0 && !loading && !error && (
+      {searched && allShops.length === 0 && !loading && !error && (
         <div className={styles.emptyBox}>
           <div className={styles.emptyIcon}>😔</div>
           <p>条件に合うお店が見つかりませんでした</p>
-          <p className={styles.emptyHint}>検索範囲・予算を変えてお試しください</p>
+          <p className={styles.emptyHint}>検索範囲を変えてお試しください</p>
         </div>
       )}
+
       {/* 店舗カード（全部モード） */}
       {searched && resultMode === 'all' && allShops.length > 0 && !loading && (
         <div className={styles.resultSection}>
-          <p className={styles.resultLabel}>📍 {allShops.length}件見つかりました</p>
+          <p className={styles.resultLabel}>
+            📍 {allShops.length}件見つかりました
+            {allShops.length >= 60 && <span className={styles.searchHint} style={{display:'block',marginTop:'2px'}}>（検索は60件限度）</span>}
+          </p>
           <div className={styles.allShopsList}>
-            {allShops.map(s => (
-              <div key={s.id} className={styles.card}>
-                {s.photo?.pc?.l && (
-                  <div className={styles.cardImageWrap}>
-                    <img src={s.photo.pc.l} alt={s.name} className={styles.cardImage} />
-                  </div>
-                )}
-                <div className={styles.cardBody}>
-                  <h3 className={styles.shopName}>{s.name}</h3>
-                  {s.genre?.name && <span className={styles.badge}>{s.genre.name}</span>}
-                  <div className={styles.infoList}>
-                    {s.address && (
-                      <div className={styles.infoRow}>
-                        <span className={styles.infoIcon}>📍</span>
-                        <span>{s.address}</span>
-                        {userPos && s.lat && s.lng && (
-                          <span className={styles.distanceBadge}>
-                            {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)))}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {s.open && <div className={styles.infoRow}><span className={styles.infoIcon}>🕐</span><span>{s.open}</span></div>}
-                    {s.lunch && <div className={styles.infoRow}><span className={styles.infoIcon}>🍽️</span><span>ランチ: {s.lunch}</span></div>}
-                    {s.budget?.average && <div className={styles.infoRow}><span className={styles.infoIcon}>💴</span><span>目安: {s.budget.average}</span></div>}
-                    {s.access && <div className={styles.infoRow}><span className={styles.infoIcon}>🚶</span><span>{s.access}</span></div>}
-                  </div>
-                  <div className={styles.cardActions}>
-                    <a href={s.urls?.pc} target="_blank" rel="noopener noreferrer" className={styles.linkBtn}>ホットペッパーで見る</a>
-                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}`} target="_blank" rel="noopener noreferrer" className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}>地図で見る</a>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {allShops.map(s => renderShopCard(s, s.id))}
           </div>
         </div>
       )}
@@ -503,74 +400,8 @@ export default function Home() {
       {shop && !loading && (
         <div className={styles.resultSection}>
           <p className={styles.resultLabel}>🎲 今日のお店はこちら！</p>
-          <div className={styles.card}>
-            {shop.photo?.pc?.l && (
-              <div className={styles.cardImageWrap}>
-                <img src={shop.photo.pc.l} alt={shop.name} className={styles.cardImage} />
-              </div>
-            )}
-            <div className={styles.cardBody}>
-              <h3 className={styles.shopName}>{shop.name}</h3>
-              {shop.genre?.name && (
-                <span className={styles.badge}>{shop.genre.name}</span>
-              )}
-              <div className={styles.infoList}>
-                {shop.address && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoIcon}>📍</span>
-                    <span>{shop.address}</span>
-                    {userPos && shop.lat && shop.lng && (
-                      <span className={styles.distanceBadge}>
-                        {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(shop.lat), parseFloat(shop.lng)))}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {shop.open && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoIcon}>🕐</span>
-                    <span>{shop.open}</span>
-                  </div>
-                )}
-                {shop.lunch && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoIcon}>🍽️</span>
-                    <span>ランチ: {shop.lunch}</span>
-                  </div>
-                )}
-                {shop.budget?.average && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoIcon}>💴</span>
-                    <span>目安: {shop.budget.average}</span>
-                  </div>
-                )}
-                {shop.access && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoIcon}>🚶</span>
-                    <span>{shop.access}</span>
-                  </div>
-                )}
-              </div>
-              <div className={styles.cardActions}>
-                <a
-                  href={shop.urls?.pc}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.linkBtn}
-                >
-                  ホットペッパーで見る
-                </a>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.name + ' ' + shop.address)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}
-                >
-                  地図で見る
-                </a>
-              </div>
-            </div>
-          </div>
+          <p className={styles.searchHint}>近隣の最大60件から抽選しています</p>
+          {renderShopCard(shop, shop.id)}
 
           <button className={styles.retryBtn} onClick={handleRetry}>
             🎲 もう1度ガチャ
@@ -586,76 +417,7 @@ export default function Home() {
               </button>
               {showAll && (
                 <div className={styles.allShopsList}>
-                  {allShops.filter(s => s.id !== shop.id).map(s => (
-                    <div key={s.id} className={styles.card}>
-                      {s.photo?.pc?.l && (
-                        <div className={styles.cardImageWrap}>
-                          <img src={s.photo.pc.l} alt={s.name} className={styles.cardImage} />
-                        </div>
-                      )}
-                      <div className={styles.cardBody}>
-                        <h3 className={styles.shopName}>{s.name}</h3>
-                        {s.genre?.name && (
-                          <span className={styles.badge}>{s.genre.name}</span>
-                        )}
-                        <div className={styles.infoList}>
-                          {s.address && (
-                            <div className={styles.infoRow}>
-                              <span className={styles.infoIcon}>📍</span>
-                              <span>{s.address}</span>
-                              {userPos && s.lat && s.lng && (
-                                <span className={styles.distanceBadge}>
-                                  {formatDistance(haversine(userPos.lat, userPos.lng, parseFloat(s.lat), parseFloat(s.lng)))}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {s.open && (
-                            <div className={styles.infoRow}>
-                              <span className={styles.infoIcon}>🕐</span>
-                              <span>{s.open}</span>
-                            </div>
-                          )}
-                          {s.lunch && (
-                            <div className={styles.infoRow}>
-                              <span className={styles.infoIcon}>🍽️</span>
-                              <span>ランチ: {s.lunch}</span>
-                            </div>
-                          )}
-                          {s.budget?.average && (
-                            <div className={styles.infoRow}>
-                              <span className={styles.infoIcon}>💴</span>
-                              <span>目安: {s.budget.average}</span>
-                            </div>
-                          )}
-                          {s.access && (
-                            <div className={styles.infoRow}>
-                              <span className={styles.infoIcon}>🚶</span>
-                              <span>{s.access}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className={styles.cardActions}>
-                          <a
-                            href={s.urls?.pc}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={styles.linkBtn}
-                          >
-                            ホットペッパーで見る
-                          </a>
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name + ' ' + s.address)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}
-                          >
-                            地図で見る
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {allShops.filter(s => s.id !== shop.id).map(s => renderShopCard(s, s.id))}
                 </div>
               )}
             </>
