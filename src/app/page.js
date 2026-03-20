@@ -259,14 +259,16 @@ export default function Home() {
           )}
         </div>
         <div className={styles.cardActions}>
-          <a
-            href={s.urls?.pc}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.linkBtn}
-          >
-            Googleマップで見る
-          </a>
+          {s.urls?.pc && (
+            <a
+              href={s.urls.pc}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.linkBtn}
+            >
+              HOT Pepperで見る
+            </a>
+          )}
         </div>
       </div>
     </div>
