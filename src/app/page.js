@@ -1,7 +1,34 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import styles from './page.module.css';
+
+// ── Google AdSense 横長バナー ──────────────────────────────
+function AdBanner({ slotId }) {
+  const adRef = useRef(null);
+  useEffect(() => {
+    try {
+      if (adRef.current && adRef.current.offsetWidth > 0) {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      }
+    } catch (e) {
+      // AdSense がブロックされている環境では無視
+    }
+  }, []);
+  return (
+    <div style={{ width: '100%', overflow: 'hidden', margin: '12px 0', textAlign: 'center' }}>
+      <ins
+        ref={adRef}
+        className="adsbygoogle"
+        style={{ display: 'block' }}
+        data-ad-client="ca-pub-9626616142283740"
+        data-ad-slot={slotId}
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      />
+    </div>
+  );
+}
 
 // ── デバッグ用固定座標（本番時は null に戻す）──────────────
 // const DEBUG_LOCATION = { lat: 34.3942032224381, lng: 132.45875854135784 };
@@ -331,6 +358,9 @@ export default function Home() {
         {loading ? '検索中…' : '🔍 検索する'}
       </button>
 
+      {/* 広告①：検索ボタン直下 */}
+      <AdBanner slotId="6915893839" />
+
       {loading && (
         <div className={styles.loadingWrap}>
           <div className={styles.spinner} />
@@ -365,6 +395,9 @@ export default function Home() {
           <button className={styles.retryBtn} onClick={handleRetry}>
             🎲 もう1度ガチャ
           </button>
+
+          {/* 広告②：もう1度ガチャボタン下 */}
+          <AdBanner slotId="2460809350" />
         </div>
       )}
     </div>
