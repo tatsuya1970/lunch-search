@@ -279,7 +279,7 @@ export default function Home() {
       {/* ヘッダー */}
       <header className={styles.header}>
         <div className={styles.headerIcon}>🍽️</div>
-        <h1 className={styles.title}>ランチ難民・ディナー難民<br />救済サービス</h1>
+        <h1 className={styles.title}>ごはんガチャ</h1>
         <p className={styles.subtitle}>現在地周辺の飲食店をパッと表示</p>
       </header>
 

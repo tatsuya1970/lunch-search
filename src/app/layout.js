@@ -5,19 +5,19 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
 export const metadata = {
   metadataBase: new URL(siteUrl),
-  title: 'ランチ＆ディナー難民救済サービス',
+  title: 'ごはんガチャ',
   description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。価格帯・検索範囲を選んでタップするだけ！',
   openGraph: {
-    title: 'ランチ＆ディナー難民救済サービス',
+    title: 'ごはんガチャ',
     description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。価格帯・検索範囲を選んでタップするだけ！',
     url: siteUrl,
-    siteName: 'ランチ＆ディナー難民救済サービス',
+    siteName: 'ごはんガチャ',
     images: [
       {
         url: '/ogp.png',
         width: 1200,
         height: 630,
-        alt: 'ランチ＆ディナー難民救済サービス',
+        alt: 'ごはんガチャ',
       },
     ],
     locale: 'ja_JP',
@@ -25,7 +25,7 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ランチ＆ディナー難民救済サービス',
+    title: 'ごはんガチャ',
     description: '現在地周辺の営業中の飲食店をランダムに1件提案するアプリ。',
     images: ['/ogp.png'],
   },
